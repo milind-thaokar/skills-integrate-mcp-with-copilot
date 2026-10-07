@@ -39,6 +39,52 @@
         </form>
         <div id="message" class="hidden"></div>
       </section>
+
+      <section id="admin-container" class="admin-panel">
+        <div class="admin-heading">
+          <div>
+            <h3>Activity Administration</h3>
+            <p>Create and manage activities.</p>
+          </div>
+          <button id="admin-toggle" class="secondary-button" type="button">Show Admin</button>
+        </div>
+        <div id="admin-content" class="hidden">
+          <form id="activity-form" class="admin-form">
+            <input type="hidden" id="activity-editing" />
+            <div class="form-grid">
+              <div class="form-group">
+                <label for="activity-name">Activity name</label>
+                <input id="activity-name" name="name" required maxlength="100" />
+              </div>
+              <div class="form-group">
+                <label for="activity-category">Category</label>
+                <input id="activity-category" name="category" required maxlength="100" />
+              </div>
+              <div class="form-group">
+                <label for="activity-schedule">Schedule</label>
+                <input id="activity-schedule" name="schedule" required maxlength="200" />
+              </div>
+              <div class="form-group">
+                <label for="activity-location">Location</label>
+                <input id="activity-location" name="location" required maxlength="200" />
+              </div>
+              <div class="form-group">
+                <label for="activity-capacity">Maximum participants</label>
+                <input id="activity-capacity" name="max_participants" type="number" min="1" max="1000" required />
+              </div>
+              <div class="form-group form-group-wide">
+                <label for="activity-description">Description</label>
+                <textarea id="activity-description" name="description" required maxlength="500" rows="3"></textarea>
+              </div>
+            </div>
+            <div class="admin-actions">
+              <button id="activity-submit" type="submit">Add Activity</button>
+              <button id="activity-cancel" class="secondary-button" type="button" hidden>Cancel</button>
+            </div>
+          </form>
+          <div id="admin-activities" class="admin-list"></div>
+        </div>
+      </section>
     </main>
 
     <footer>

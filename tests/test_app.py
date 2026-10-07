@@ -119,3 +119,29 @@ def test_activity_validation_rejects_invalid_data():
     assert response.status_code == 422
     assert "name" in response.text.lower()
     assert "max_participants" in response.text.lower()
+
+
+def test_signup_rejects_full_activity():
+    reset_activities()
+    activities["Chess Club"]["participants"] = [
+        "student1@mergington.edu",
+        "student2@mergington.edu",
+        "student3@mergington.edu",
+        "student4@mergington.edu",
+        "student5@mergington.edu",
+        "student6@mergington.edu",
+        "student7@mergington.edu",
+        "student8@mergington.edu",
+        "student9@mergington.edu",
+        "student10@mergington.edu",
+        "student11@mergington.edu",
+        "student12@mergington.edu",
+    ]
+
+    response = client.post(
+        "/activities/Chess%20Club/signup",
+        params={"email": "student13@mergington.edu"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Activity is full"
