@@ -8,6 +8,7 @@ for extracurricular activities at Mergington High School.
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel, Field, field_validator
 import os
 from pathlib import Path
 
@@ -77,6 +78,35 @@ activities = {
     }
 }
 
+for activity in activities.values():
+    activity.setdefault("location", "TBD")
+    activity.setdefault("category", "General")
+    activity.setdefault("active", True)
+
+
+class ActivityCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    description: str = Field(min_length=1, max_length=500)
+    schedule: str = Field(min_length=1, max_length=200)
+    location: str = Field(min_length=1, max_length=200)
+    category: str = Field(min_length=1, max_length=100)
+    max_participants: int = Field(gt=0, le=1000)
+
+    @field_validator("name")
+    @classmethod
+    def validate_unique_name(cls, value: str):
+        if value in activities:
+            raise ValueError("An activity with this name already exists")
+        return value
+
+
+class ActivityUpdate(BaseModel):
+    description: str = Field(min_length=1, max_length=500)
+    schedule: str = Field(min_length=1, max_length=200)
+    location: str = Field(min_length=1, max_length=200)
+    category: str = Field(min_length=1, max_length=100)
+    max_participants: int = Field(gt=0, le=1000)
+
 
 @app.get("/")
 def root():
@@ -85,18 +115,77 @@ def root():
 
 @app.get("/activities")
 def get_activities():
+    return {
+        name: details
+        for name, details in activities.items()
+        if details.get("active", True)
+    }
+
+
+@app.get("/admin/activities")
+def get_all_activities():
     return activities
+
+
+@app.post("/activities", status_code=201)
+def create_activity(activity: ActivityCreate):
+    activities[activity.name] = {
+        "description": activity.description,
+        "schedule": activity.schedule,
+        "location": activity.location,
+        "category": activity.category,
+        "max_participants": activity.max_participants,
+        "participants": [],
+        "active": True,
+    }
+    return activities[activity.name] | {"name": activity.name}
+
+
+@app.put("/activities/{activity_name}")
+def update_activity(activity_name: str, activity: ActivityUpdate):
+    if activity_name not in activities:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    activities[activity_name].update(activity.model_dump())
+    return activities[activity_name]
+
+
+@app.patch("/activities/{activity_name}/archive")
+def archive_activity(activity_name: str):
+    if activity_name not in activities:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    activities[activity_name]["active"] = False
+    return {"message": f"Archived {activity_name}"}
+
+
+@app.patch("/activities/{activity_name}/reactivate")
+def reactivate_activity(activity_name: str):
+    if activity_name not in activities:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    activities[activity_name]["active"] = True
+    return {"message": f"Reactivated {activity_name}"}
+
+
+@app.delete("/activities/{activity_name}", status_code=204)
+def delete_activity(activity_name: str):
+    if activity_name not in activities:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    del activities[activity_name]
 
 
 @app.post("/activities/{activity_name}/signup")
 def signup_for_activity(activity_name: str, email: str):
     """Sign up a student for an activity"""
-    # Validate activity exists
+    # Validate activity exists and is active
     if activity_name not in activities:
         raise HTTPException(status_code=404, detail="Activity not found")
 
-    # Get the specific activity
     activity = activities[activity_name]
+    if not activity.get("active", True):
+        raise HTTPException(status_code=400, detail="Activity is archived")
 
     # Validate student is not already signed up
     if email in activity["participants"]:
@@ -104,6 +193,9 @@ def signup_for_activity(activity_name: str, email: str):
             status_code=400,
             detail="Student is already signed up"
         )
+
+    if len(activity["participants"]) >= activity["max_participants"]:
+        raise HTTPException(status_code=400, detail="Activity is full")
 
     # Add student
     activity["participants"].append(email)

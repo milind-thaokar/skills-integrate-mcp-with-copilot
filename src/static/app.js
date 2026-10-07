@@ -155,6 +155,171 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  const adminToggle = document.getElementById("admin-toggle");
+  const adminContent = document.getElementById("admin-content");
+  const activityForm = document.getElementById("activity-form");
+  const activitySubmit = document.getElementById("activity-submit");
+  const activityCancel = document.getElementById("activity-cancel");
+  const activityEditing = document.getElementById("activity-editing");
+  const adminActivities = document.getElementById("admin-activities");
+
+  let adminVisible = false;
+
+  function showMessage(text, type = "success") {
+    messageDiv.textContent = text;
+    messageDiv.className = type;
+    messageDiv.classList.remove("hidden");
+    window.setTimeout(() => messageDiv.classList.add("hidden"), 5000);
+  }
+
+  async function fetchAdminActivities() {
+    const response = await fetch("/admin/activities");
+    if (!response.ok) {
+      throw new Error("Unable to load admin activities");
+    }
+
+    const activities = await response.json();
+    adminActivities.innerHTML = "";
+
+    Object.entries(activities).forEach(([name, details]) => {
+      const card = document.createElement("article");
+      card.className = "admin-activity-card";
+      const status = details.active ? "Active" : "Archived";
+      card.innerHTML = `
+        <div>
+          <h4>${escapeHtml(name)}</h4>
+          <p>${escapeHtml(details.category)} · ${escapeHtml(details.schedule)}</p>
+          <span class="status-badge ${details.active ? "active" : "archived"}">${status}</span>
+        </div>
+        <div class="admin-card-actions">
+          <button type="button" data-action="edit" data-activity="${escapeHtml(name)}">Edit</button>
+          <button type="button" data-action="toggle" data-activity="${escapeHtml(name)}">${details.active ? "Archive" : "Reactivate"}</button>
+          <button type="button" class="danger-button" data-action="delete" data-activity="${escapeHtml(name)}">Delete</button>
+        </div>
+      `;
+      adminActivities.appendChild(card);
+    });
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function resetActivityForm() {
+    activityForm.reset();
+    activityEditing.value = "";
+    activitySubmit.textContent = "Add Activity";
+    activityCancel.hidden = true;
+  }
+
+  function populateActivityForm(name, details) {
+    activityEditing.value = name;
+    document.getElementById("activity-name").value = name;
+    document.getElementById("activity-description").value = details.description;
+    document.getElementById("activity-schedule").value = details.schedule;
+    document.getElementById("activity-location").value = details.location;
+    document.getElementById("activity-category").value = details.category;
+    document.getElementById("activity-capacity").value = details.max_participants;
+    activitySubmit.textContent = "Save Changes";
+    activityCancel.hidden = false;
+    document.getElementById("activity-name").disabled = true;
+    document.getElementById("activity-name").required = false;
+  }
+
+  function clearEditState() {
+    document.getElementById("activity-name").disabled = false;
+    document.getElementById("activity-name").required = true;
+    resetActivityForm();
+  }
+
+  async function requestJson(url, options = {}) {
+    const response = await fetch(url, options);
+    const data = response.status === 204 ? null : await response.json();
+    if (!response.ok) {
+      throw new Error(data?.detail || "The request could not be completed");
+    }
+    return data;
+  }
+
+  adminToggle.addEventListener("click", async () => {
+    adminVisible = !adminVisible;
+    adminContent.classList.toggle("hidden", !adminVisible);
+    adminToggle.textContent = adminVisible ? "Hide Admin" : "Show Admin";
+
+    if (adminVisible) {
+      try {
+        await fetchAdminActivities();
+      } catch (error) {
+        showMessage(error.message, "error");
+      }
+    }
+  });
+
+  activityForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(activityForm);
+    const payload = Object.fromEntries(formData.entries());
+    payload.max_participants = Number(payload.max_participants);
+    const editing = activityEditing.value;
+
+    try {
+      const endpoint = editing ? `/activities/${encodeURIComponent(editing)}` : "/activities";
+      const method = editing ? "PUT" : "POST";
+      await requestJson(endpoint, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      showMessage(editing ? "Activity updated." : "Activity added.");
+      clearEditState();
+      await fetchActivities();
+      await fetchAdminActivities();
+    } catch (error) {
+      showMessage(error.message, "error");
+    }
+  });
+
+  activityCancel.addEventListener("click", clearEditState);
+
+  adminActivities.addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-action]");
+    if (!button) return;
+
+    const name = button.dataset.activity;
+    const action = button.dataset.action;
+
+    try {
+      if (action === "edit") {
+        const response = await fetch(`/admin/activities`);
+        const activities = await response.json();
+        populateActivityForm(name, activities[name]);
+        return;
+      }
+
+      if (action === "delete") {
+        if (!window.confirm(`Delete ${name}? This cannot be undone.`)) return;
+        await requestJson(`/activities/${encodeURIComponent(name)}`, { method: "DELETE" });
+        showMessage(`${name} was deleted.`);
+      } else {
+        const activities = await requestJson(`/admin/activities`);
+        const activity = activities[name];
+        const endpoint = `/activities/${encodeURIComponent(name)}/${activity.active ? "archive" : "reactivate"}`;
+        await requestJson(endpoint, { method: "PATCH" });
+        showMessage(`${name} was ${activity.active ? "archived" : "reactivated"}.`);
+      }
+
+      await fetchActivities();
+      await fetchAdminActivities();
+    } catch (error) {
+      showMessage(error.message, "error");
+    }
+  });
+
   // Initialize app
   fetchActivities();
 });
